@@ -15,16 +15,25 @@ Hooks.once("init", async () => {
     // Register module settings
     registerSettings();
 
-    // Register the custom character sheet 
-    // We define the class inside the hook to ensure dnd5e namespace is available if needed
-    // or we just ensure dnd5e isn't required at definition time if we extend ActorSheet.
-    // However, for dnd5e system integration, extending their base sheet is best.
+    // Determine the base class for the character sheet
+    const dnd5eApps = window.dnd5e?.applications?.actor;
+    const BaseSheetClass = dnd5eApps?.CharacterSheet5e || dnd5eApps?.ActorSheet5eCharacter || ActorSheet;
 
-    class DDBCharacterSheet extends dnd5e.applications.actor.ActorSheet5eCharacter {
+    if (!dnd5eApps) {
+        console.warn("DDB-Sheet | dnd5e applications not found. Falling back to base ActorSheet.");
+    } else {
+        console.log(`DDB-Sheet | Extending base class: ${BaseSheetClass.name}`);
+    }
+
+    /**
+     * Custom ActorSheet that replicates the D&D Beyond look and feel.
+     */
+    class DDBCharacterSheet extends BaseSheetClass {
         /** @override */
         static get defaultOptions() {
-            return foundry.utils.mergeObject(super.defaultOptions, {
-                classes: ["dnd5e", "sheet", "actor", "character", "ddb-sheet"],
+            const options = super.defaultOptions;
+            return foundry.utils.mergeObject(options, {
+                classes: [...(options.classes || []), "ddb-sheet"],
                 template: "modules/ddb-character-sheet/templates/character-sheet.hbs",
                 width: 1200,
                 height: 900,
@@ -66,11 +75,12 @@ Hooks.once("init", async () => {
         }
     }
 
+    // Register for all types just to be safe, then restrict to character
     Actors.registerSheet("dnd5e", DDBCharacterSheet, {
         types: ["character"],
         makeDefault: false,
         label: "DDB Beyond Character Sheet"
     });
 
-    console.log("DDB-Sheet | Sheet Registration Complete");
+    console.log("DDB-Sheet | Sheet Registration Hook Finished");
 });
