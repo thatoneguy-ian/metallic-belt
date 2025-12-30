@@ -29,7 +29,7 @@
       }
     ]
   },
-  "url": "https://github.com/foundry-vtt-ddb-sheet",
-  "manifest": "https://raw.githubusercontent.com/foundry-vtt-ddb-sheet/main/module.json",
-  "download": "https://github.com/foundry-vtt-ddb-sheet/releases/latest/download/module.zip"
+  "url": "https://github.com/thatoneguy-ian/metallic-belt",
+  "manifest": "https://raw.githubusercontent.com/thatoneguy-ian/metallic-belt/main/module.json",
+  "download": "https://github.com/thatoneguy-ian/metallic-belt/archive/refs/heads/main.zip"
 }
