@@ -1,0 +1,40 @@
+<div class="ddb-sync-content">
+    <p>The following differences were found between Foundry and D&D Beyond:</p>
+
+    <table class="ddb-diff-table">
+        <thead>
+            <tr>
+                <th>Sync</th>
+                <th>Field</th>
+                <th>Foundry</th>
+                <th></th>
+                <th>D&D Beyond</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#each diffs as |diff index|}}
+            <tr class="diff-row {{#if (eq diff.direction 'DDB_TO_FOUNDRY')}}to-foundry{{else}}to-ddb{{/if}}">
+                <td>
+                    <input type="checkbox" class="diff-checkbox" data-index="{{index}}" checked />
+                </td>
+                <td class="diff-field">{{diff.field}}</td>
+                <td class="diff-value foundry-value">{{diff.foundry}}</td>
+                <td class="diff-direction">
+                    {{#if (eq diff.direction 'DDB_TO_FOUNDRY')}}
+                    <i class="fas fa-long-arrow-alt-left"></i>
+                    {{else}}
+                    <i class="fas fa-long-arrow-alt-right"></i>
+                    {{/if}}
+                </td>
+                <td class="diff-value ddb-value">{{diff.ddb}}</td>
+            </tr>
+            {{/each}}
+        </tbody>
+    </table>
+
+    <div class="dialog-buttons">
+        <button class="sync-execute">
+            <i class="fas fa-sync"></i> Synchronize Selected
+        </button>
+    </div>
+</div>

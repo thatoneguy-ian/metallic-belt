@@ -1,0 +1,84 @@
+<form class="{{cssClass}} flexcol" autocomplete="off">
+
+    {{!-- Header Section --}}
+    <header class="sheet-header ddb-header flexrow">
+        <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" />
+        <div class="header-details flexcol">
+            <h1 class="charname">
+                <input name="name" type="text" value="{{actor.name}}" placeholder="Name" />
+            </h1>
+            <div class="char-summary flexrow">
+                <span>{{system.details.race}}</span>
+                <span>{{system.details.alignment}}</span>
+                <span>Level {{system.details.level}}</span>
+            </div>
+            
+            <div class="ddb-sync-status">
+                <button class="ddb-sync-btn" title="Sync with D&D Beyond">
+                    <i class="fas fa-sync"></i> {{localize "DDB_SHEET.Sync.Button"}}
+                </button>
+                <span class="last-sync">Last Sync: {{ddb.lastSync}}</span>
+            </div>
+        </div>
+    </header>
+
+    {{!-- Stats Strip --}}
+    <section class="ddb-stats-strip flexrow">
+        {{#each system.abilities as |ability id|}}
+        <div class="ability-score flexcol" data-ability="{{id}}">
+            <label class="ability-name">{{ability.label}}</label>
+            <span class="ability-value">{{ability.value}}</span>
+            <span class="ability-mod">{{numberFormat ability.mod decimals=0 sign=true}}</span>
+        </div>
+        {{/each}}
+    </section>
+
+    {{!-- Main Content Area --}}
+    <section class="ddb-main flexrow">
+        
+        {{!-- Left Column: Saves & Skills --}}
+        <aside class="ddb-sidebar flexcol">
+            <div class="ddb-box saving-throws">
+                <h3>Saving Throws</h3>
+                {{!-- Iteration logic for saves --}}
+            </div>
+            <div class="ddb-box skills">
+                <h3>Skills</h3>
+                {{!-- Iteration logic for skills --}}
+            </div>
+        </aside>
+
+        {{!-- Center Area: Tabs & Content --}}
+        <main class="ddb-content-area flexcol">
+            <nav class="ddb-tabs tabs flexrow" data-group="primary">
+                <a class="item" data-tab="actions">Actions</a>
+                <a class="item" data-tab="spells">Spells</a>
+                <a class="item" data-tab="inventory">Inventory</a>
+                <a class="item" data-tab="features">Features</a>
+                <a class="item" data-tab="notes">Notes</a>
+            </nav>
+
+            <section class="ddb-content">
+                {{!-- Actions Tab --}}
+                <div class="tab actions" data-group="primary" data-tab="actions">
+                    {{!-- List actions --}}
+                    <ul>
+                        {{#each actor.items as |item|}}
+                            {{#if (eq item.type "weapon")}}
+                                <li>{{item.name}} <button class="roll">Roll</button></li>
+                            {{/if}}
+                        {{/each}}
+                    </ul>
+                </div>
+
+                {{!-- Spells Tab --}}
+                <div class="tab spells" data-group="primary" data-tab="spells">
+                    {{!-- List spells --}}
+                </div>
+
+                {{!-- Other tabs... --}}
+            </section>
+        </main>
+    </section>
+
+</form>

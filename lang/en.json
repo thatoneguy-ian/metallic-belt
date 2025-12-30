@@ -1,0 +1,32 @@
+{
+    "DDB_SHEET": {
+        "Settings": {
+            "CobaltCookie": {
+                "Name": "D&D Beyond Cobalt Cookie",
+                "Hint": "Your secret session cookie from dndbeyond.com. Keep this private."
+            },
+            "SyncPermission": {
+                "Name": "Minimum Sync Permission",
+                "Hint": "The minimum role required to synchronize data with D&D Beyond."
+            },
+            "SyncPrefs": {
+                "Name": "Synchronization Preferences",
+                "Hint": "Configure how different data types are synchronized."
+            }
+        },
+        "Sync": {
+            "Button": "Sync with DDB",
+            "Title": "D&D Beyond Synchronization",
+            "Direction": {
+                "DDBToFoundry": "DDB → Foundry",
+                "FoundryToDDB": "Foundry → DDB"
+            },
+            "Fields": {
+                "HP": "Hit Points",
+                "Slots": "Spell Slots",
+                "AbilityScores": "Ability Scores",
+                "Inventory": "Inventory Items"
+            }
+        }
+    }
+}

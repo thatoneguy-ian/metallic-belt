@@ -1,0 +1,35 @@
+{
+  "name": "ddb-character-sheet",
+  "title": "D&D Beyond Character Sheet Replica",
+  "description": "A high-fidelity replica of the D&D Beyond character sheet for Foundry VTT, with two-way synchronization.",
+  "version": "0.1.0",
+  "author": "Antigravity",
+  "minimumCoreVersion": "12",
+  "compatibleCoreVersion": "12",
+  "id": "ddb-character-sheet",
+  "esmodules": [
+    "scripts/module.js"
+  ],
+  "styles": [
+    "styles/module.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": ">=3.0.0"
+      }
+    ]
+  },
+  "url": "https://github.com/foundry-vtt-ddb-sheet",
+  "manifest": "https://raw.githubusercontent.com/foundry-vtt-ddb-sheet/main/module.json",
+  "download": "https://github.com/foundry-vtt-ddb-sheet/releases/latest/download/module.zip"
+}
