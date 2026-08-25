@@ -451,13 +451,7 @@ describe("Foundry Module Message Router", () => {
     expect(mockActor.items[0].use).toHaveBeenCalled();
   });
 
-  it("should route ROLL_ACTION attack with rollMode 'advantage' and register a Hooks.once listener for dialog", async () => {
-    const hookRegistrations = [];
-    globalThis.Hooks.once = vi.fn((hook, cb) => {
-      if (hook === "ready" || hook === "init") cb();
-      else hookRegistrations.push({ hook, cb });
-    });
-
+  it("should route ROLL_ACTION attack with rollMode 'advantage'", async () => {
     mockActor.items[0].use = vi.fn().mockResolvedValue({});
 
     const event = new MessageEvent("message", {
@@ -472,21 +466,10 @@ describe("Foundry Module Message Router", () => {
     window.dispatchEvent(event);
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // Should have called item.use
     expect(mockActor.items[0].use).toHaveBeenCalled();
-
-    // Should have registered a Hooks.once listener waiting for the dialog
-    const dialogHook = hookRegistrations.find(r => r.hook === "renderDialog" || r.hook === "renderApplication");
-    expect(dialogHook).toBeDefined();
   });
 
-  it("should route ROLL_ACTION attack with rollMode 'disadvantage' and register a Hooks.once listener for dialog", async () => {
-    const hookRegistrations = [];
-    globalThis.Hooks.once = vi.fn((hook, cb) => {
-      if (hook === "ready" || hook === "init") cb();
-      else hookRegistrations.push({ hook, cb });
-    });
-
+  it("should route ROLL_ACTION attack with rollMode 'disadvantage'", async () => {
     mockActor.items[0].use = vi.fn().mockResolvedValue({});
 
     const event = new MessageEvent("message", {
@@ -499,10 +482,9 @@ describe("Foundry Module Message Router", () => {
     });
 
     window.dispatchEvent(event);
-    expect(mockActor.items[0].use).toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-    const dialogHook = hookRegistrations.find(r => r.hook === "renderDialog" || r.hook === "renderApplication");
-    expect(dialogHook).toBeDefined();
+    expect(mockActor.items[0].use).toHaveBeenCalled();
   });
 
   describe("renderChatMessage auto-click behavior", () => {
@@ -510,86 +492,65 @@ describe("Foundry Module Message Router", () => {
       expect(globalThis.registeredHooks.renderChatMessageHTML).toBeDefined();
     });
 
-    it("should auto-click the Attack button on renderChatMessageHTML when there is a pending attack roll", async () => {
+    // Helper: fires a ROLL_ACTION then feeds a mock chat card into renderChatMessageHTML,
+    // returning the MouseEvent dispatched at the matched button (or undefined if none).
+    async function triggerAndCapture({ type, rollMode, actionAttr }) {
       const renderChatCallback = globalThis.registeredHooks.renderChatMessageHTML;
-      expect(renderChatCallback).toBeDefined();
+      const mockButton = { dispatchEvent: vi.fn() };
+      const mockTitleEl = { textContent: "Longsword" };
+      const mockHtml = {
+        querySelector: vi.fn((selector) => {
+          if (selector === ".title") return mockTitleEl;
+          if (selector.includes(`data-action="${actionAttr}"`) || selector.includes(`roll${actionAttr.charAt(0).toUpperCase()}${actionAttr.slice(1)}`)) return mockButton;
+          return null;
+        })
+      };
 
-      // Trigger ROLL_ACTION message for an attack
-      const event = new MessageEvent("message", {
+      window.dispatchEvent(new MessageEvent("message", {
         data: {
           source: "ddb-bridge-extension",
           characterId: "12345",
           type: "ROLL_ACTION",
-          data: { name: "Longsword", type: "attack", rollMode: "advantage" }
+          data: { name: "Longsword", type, rollMode }
         }
-      });
-      window.dispatchEvent(event);
+      }));
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Prepare mock HTML elements
-      const mockButton = {
-        click: vi.fn()
-      };
-      const mockTitleEl = {
-        textContent: "Longsword"
-      };
-      const mockHtml = {
-        querySelector: vi.fn((selector) => {
-          if (selector === ".title") return mockTitleEl;
-          if (selector.includes('data-action="attack"') || selector.includes('rollAttack')) return mockButton;
-          return null;
-        })
-      };
-      const mockMessage = {
-        item: { name: "Longsword" }
-      };
+      await renderChatCallback({ item: { name: "Longsword" } }, mockHtml);
 
-      // Call renderChatMessageHTML hook (passing mockHtml directly as if it's a native Element or resolving via html[0])
-      await renderChatCallback(mockMessage, mockHtml);
+      expect(mockButton.dispatchEvent).toHaveBeenCalled();
+      return mockButton.dispatchEvent.mock.calls[0][0];
+    }
 
-      // Verify button was clicked
-      expect(mockButton.click).toHaveBeenCalled();
+    it("should auto-click the Attack button, fast-forwarding with Shift (skip dialog, normal) for a flat roll", async () => {
+      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "flat", actionAttr: "attack" });
+      expect(dispatched.type).toBe("click");
+      expect(dispatched.shiftKey).toBe(true);
+      expect(dispatched.altKey).toBe(false);
+      expect(dispatched.ctrlKey).toBe(false);
     });
 
-    it("should auto-click the Damage button on renderChatMessageHTML when there is a pending damage roll", async () => {
-      const renderChatCallback = globalThis.registeredHooks.renderChatMessageHTML;
-      expect(renderChatCallback).toBeDefined();
+    it("should auto-click the Attack button, fast-forwarding with Alt (skip dialog, advantage) for an advantage roll", async () => {
+      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "advantage", actionAttr: "attack" });
+      expect(dispatched.altKey).toBe(true);
+      expect(dispatched.shiftKey).toBe(false);
+      expect(dispatched.ctrlKey).toBe(false);
+    });
 
-      // Trigger ROLL_ACTION message for damage
-      const event = new MessageEvent("message", {
-        data: {
-          source: "ddb-bridge-extension",
-          characterId: "12345",
-          type: "ROLL_ACTION",
-          data: { name: "Longsword", type: "damage" }
-        }
-      });
-      window.dispatchEvent(event);
-      await new Promise(resolve => setTimeout(resolve, 50));
+    it("should auto-click the Attack button, fast-forwarding with Ctrl (skip dialog, disadvantage) for a disadvantage roll", async () => {
+      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "disadvantage", actionAttr: "attack" });
+      expect(dispatched.ctrlKey).toBe(true);
+      expect(dispatched.shiftKey).toBe(false);
+      expect(dispatched.altKey).toBe(false);
+    });
 
-      // Prepare mock HTML elements
-      const mockButton = {
-        click: vi.fn()
-      };
-      const mockTitleEl = {
-        textContent: "Longsword"
-      };
-      const mockHtml = {
-        querySelector: vi.fn((selector) => {
-          if (selector === ".title") return mockTitleEl;
-          if (selector.includes('data-action="damage"') || selector.includes('rollDamage')) return mockButton;
-          return null;
-        })
-      };
-      const mockMessage = {
-        item: { name: "Longsword" }
-      };
-
-      // Call renderChatMessageHTML hook
-      await renderChatCallback(mockMessage, mockHtml);
-
-      // Verify button was clicked
-      expect(mockButton.click).toHaveBeenCalled();
+    it("should auto-click the Damage button, always fast-forwarding with Shift regardless of rollMode", async () => {
+      // Damage rolls have no advantage/disadvantage concept — Shift skips the
+      // dialog while inheriting whatever crit status the attack already set.
+      const dispatched = await triggerAndCapture({ type: "damage", rollMode: "advantage", actionAttr: "damage" });
+      expect(dispatched.shiftKey).toBe(true);
+      expect(dispatched.altKey).toBe(false);
+      expect(dispatched.ctrlKey).toBe(false);
     });
 
 
@@ -634,7 +595,7 @@ describe("Foundry Module Message Router", () => {
 
       const liElement = container.querySelector("li");
       const attackButton = liElement.querySelector('button[data-action="rollAttack"]');
-      const clickSpy = vi.spyOn(attackButton, "click");
+      const dispatchSpy = vi.spyOn(attackButton, "dispatchEvent");
 
       const mockMessage = {
         item: { name: "Longsword" }
@@ -642,7 +603,9 @@ describe("Foundry Module Message Router", () => {
 
       await renderChatCallback(mockMessage, liElement);
 
-      expect(clickSpy).toHaveBeenCalled();
+      expect(dispatchSpy).toHaveBeenCalled();
+      // rollMode was "flat" — fast-forwards with Shift (skip dialog, no adv/disadv)
+      expect(dispatchSpy.mock.calls[0][0].shiftKey).toBe(true);
     });
   });
 });

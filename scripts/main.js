@@ -53,16 +53,12 @@ Hooks.on("renderChatMessageHTML", (message, html, data) => {
 
   if (button) {
     console.log(`[DDB-Bridge] Auto-clicking chat card button for action: ${action}`);
-    
+
     // Clear pending state
     const currentRollMode = pendingCardClick.rollMode;
     pendingCardClick = null;
 
-    if (action === "attack") {
-      autoResolveAttackRoll(currentRollMode);
-    }
-
-    button.click();
+    clickWithFastForward(button, action, currentRollMode);
   }
 });
 
@@ -301,9 +297,6 @@ async function handleDDBJsonResponse(actor, ddbJson, scrapedStats = null, avatar
 
 /**
  * Triggers a native Foundry roll for an item/spell, or executes saves/checks.
- * When rollMode is 'advantage' or 'disadvantage', registers a one-time hook
- * that intercepts the Attack Roll configuration dialog and automatically clicks
- * the correct ADVANTAGE / NORMAL / DISADVANTAGE button.
  */
 async function handleRollAction(actor, data) {
   const { name, type, rollMode } = data;
@@ -317,13 +310,6 @@ async function handleRollAction(actor, data) {
     }
 
     console.log(`[DDB-Bridge] Rolling item: ${item.name} (rollMode: ${rollMode || "flat"})`);
-
-    // If a non-default roll mode was sent from D&D Beyond, pre-register a
-    // dialog hook so we can auto-click the correct button when the Attack Roll
-    // configuration dialog appears (after the player clicks ATTACK on the card).
-    if (rollMode === "advantage" || rollMode === "disadvantage") {
-      autoResolveAttackRoll(rollMode);
-    }
 
     // Set pending chat card click
     const action = type === "damage" ? "damage" : "attack";
@@ -370,55 +356,47 @@ async function handleRollAction(actor, data) {
 }
 
 /**
- * Registers a one-time Foundry dialog hook that will fire when the Attack Roll
- * configuration dialog appears. The hook auto-clicks ADVANTAGE or DISADVANTAGE.
+ * Clicks a chat card's roll button (rollAttack/rollDamage) with the modifier
+ * key that makes dnd5e's own D20Roll/DamageRoll pipeline skip its roll
+ * configuration dialog entirely, rather than waiting for that dialog to render
+ * and guessing which button to click on it.
  *
- * The hook stays registered until the next dialog renders — this is fine because
- * the Attack Roll dialog is typically the next dialog to appear after item.use().
+ * This is dnd5e's own documented "fast forward" convention — the same keys a
+ * player would hold to skip the dialog by hand (module/dice/d20-roll.mjs and
+ * module/utils.mjs#areKeysPressed in dnd5e 5.3.x read these directly off the
+ * triggering click event, matching the core keybindings registered in
+ * module/settings.mjs):
+ *   - Shift → skipDialogNormal   (roll immediately, no advantage/disadvantage)
+ *   - Alt   → skipDialogAdvantage
+ *   - Ctrl  → skipDialogDisadvantage
  *
- * @param {"advantage"|"disadvantage"} rollMode
+ * For a damage roll there is no advantage/disadvantage concept — Shift is used
+ * unconditionally so the dialog is skipped while inheriting whatever crit
+ * status the system already determined from the associated attack roll, if any.
+ *
+ * @param {HTMLElement} button
+ * @param {"attack"|"damage"} action
+ * @param {"advantage"|"flat"|"disadvantage"} [rollMode]
  */
-function autoResolveAttackRoll(rollMode) {
-  // Map D&D Beyond roll mode → the button label in Foundry's Attack Roll dialog
-  const labelMap = {
-    advantage:    "ADVANTAGE",
-    flat:         "NORMAL",
-    disadvantage: "DISADVANTAGE"
-  };
-  const targetLabel = labelMap[rollMode] || "NORMAL";
+function clickWithFastForward(button, action, rollMode) {
+  const modifiers = action === "damage"
+    ? { shiftKey: true, altKey: false, ctrlKey: false }
+    : {
+        shiftKey: rollMode !== "advantage" && rollMode !== "disadvantage",
+        altKey: rollMode === "advantage",
+        ctrlKey: rollMode === "disadvantage"
+      };
 
-  console.log(`[DDB-Bridge] Pre-registering Attack Roll dialog hook for: ${targetLabel}`);
-
-  Hooks.once("renderDialog", (dialog, html) => {
-    console.log(`[DDB-Bridge] renderDialog fired — title: "${dialog.title}"`);
-
-    // Resolve the HTML root: Foundry v11 passes a jQuery object, v12 may pass Element
-    const root = (html && typeof html.find === "function")
-      ? html[0]
-      : (html instanceof Element ? html : null);
-
-    if (!root) {
-      console.warn("[DDB-Bridge] renderDialog: could not resolve root element");
-      return;
-    }
-
-    // Find all buttons in the dialog and click the one matching our label
-    const buttons = root.querySelectorAll("button");
-    let clicked = false;
-    for (const btn of buttons) {
-      if (btn.textContent.trim().toUpperCase() === targetLabel) {
-        console.log(`[DDB-Bridge] Auto-clicking "${targetLabel}" in Attack Roll dialog`);
-        btn.click();
-        clicked = true;
-        break;
-      }
-    }
-
-    if (!clicked) {
-      console.warn(`[DDB-Bridge] Could not find "${targetLabel}" button in dialog. Available buttons:`,
-        Array.from(buttons).map(b => b.textContent.trim()));
-    }
-  });
+  console.log(`[DDB-Bridge] Fast-forwarding ${action} roll (rollMode: ${rollMode || "flat"})`);
+  // No `view` property: dnd5e's own fast-forward detection (areKeysPressed) only
+  // reads shiftKey/altKey/ctrlKey off the event, and `view` requires the exact
+  // Window instance that owns the target's realm — setting it is unnecessary
+  // here and throws in some embedding contexts (e.g. jsdom) if that doesn't match.
+  button.dispatchEvent(new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    ...modifiers
+  }));
 }
 
 

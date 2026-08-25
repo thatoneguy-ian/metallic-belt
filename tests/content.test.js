@@ -142,24 +142,54 @@ describe("Companion Extension Content Script Helpers", () => {
       expect(data).toEqual({ name: "Acrobatics", type: "skill" });
     });
 
-    it("should extract attack name when button is nested inside a cell like combat-attack__damage", () => {
+    it("should classify a button nested inside a combat-attack__damage cell as a damage roll, not an attack roll", () => {
+      // D&D Beyond's real markup (confirmed via captured DOM) has the same
+      // ddbc-combat-attack row wrapping two distinct roll buttons: one inside
+      // a `__tohit` cell, one inside a `__damage` cell. Both share the same
+      // integrated-dice button styling, so only the wrapping cell's class
+      // distinguishes them — collapsing both to "attack" caused Foundry to
+      // always run the full attack workflow, even when Damage was clicked.
       const row = document.createElement("div");
       row.className = "ddbc-combat-attack";
-      
+
       const nameEl = document.createElement("span");
       nameEl.className = "ct-combat-attack__name";
       nameEl.textContent = "Flame Blade";
       row.appendChild(nameEl);
-      
+
       const cell = document.createElement("div");
       cell.className = "ddbc-combat-attack__damage";
       row.appendChild(cell);
-      
+
       const button = document.createElement("button");
       button.className = "integrated-dice__container";
       button.textContent = "3d6";
       cell.appendChild(button);
-      
+
+      document.body.appendChild(row);
+
+      const data = globalThis.extractActionData(button);
+      expect(data).toEqual({ name: "Flame Blade", type: "damage" });
+    });
+
+    it("should classify a button nested inside a combat-attack__tohit cell as an attack roll", () => {
+      const row = document.createElement("div");
+      row.className = "ddbc-combat-attack";
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "ct-combat-attack__name";
+      nameEl.textContent = "Flame Blade";
+      row.appendChild(nameEl);
+
+      const cell = document.createElement("div");
+      cell.className = "ddbc-combat-attack__tohit";
+      row.appendChild(cell);
+
+      const button = document.createElement("button");
+      button.className = "integrated-dice__container";
+      button.textContent = "+7";
+      cell.appendChild(button);
+
       document.body.appendChild(row);
 
       const data = globalThis.extractActionData(button);

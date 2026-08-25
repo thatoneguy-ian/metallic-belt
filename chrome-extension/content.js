@@ -342,7 +342,14 @@ function extractActionData(element) {
   if (attackRow) {
     const nameEl = attackRow.querySelector(".ct-combat-attack__name") || findChildByClassKeyword(attackRow, ["attack__name", "attack-name", "combat-attack__name", "name"]);
     name = getCleanName(nameEl);
-    type = "attack";
+    // D&D Beyond's attack row has two separate roll controls — "TO HIT"
+    // (class ...__tohit) and "DAMAGE" (class ...__damage) — sharing the same
+    // row and the same integrated-dice button styling. Without distinguishing
+    // them, a damage-roll click was misreported as an attack-roll click, so
+    // Foundry always ran the full attack workflow instead of a damage-only roll.
+    const damageEl = element.closest('[class*="__damage"]');
+    const isDamageClick = !!damageEl && attackRow.contains(damageEl);
+    type = isDamageClick ? "damage" : "attack";
   } else if (spellRow) {
     const nameEl = spellRow.querySelector(".ct-spells-spell__name") || findChildByClassKeyword(spellRow, ["spell__name", "spell-name", "spells-spell__name", "name"]);
     name = getCleanName(nameEl);
