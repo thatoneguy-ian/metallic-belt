@@ -120,6 +120,23 @@
     "spellSlots": [
       { "level": 1, "used": 2, "max": 4 },
       { "level": 2, "used": 0, "max": 2 }
+    ],
+    "classSpells": [
+      {
+        "characterClass": 5001,
+        "spells": [
+          {
+            "definition": {
+              "name": "Eldritch Blast",
+              "level": 0,
+              "school": "Evocation",
+              "range": { "origin": "Ranged", "rangeValue": 120 },
+              "activation": { "activationType": 1, "activationTime": 1 }
+            },
+            "prepared": true
+          }
+        ]
+      }
     ]
   }
 }

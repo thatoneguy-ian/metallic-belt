@@ -16,6 +16,62 @@ export function normalizeItemName(name) {
 }
 
 /**
+ * Maps a single D&D Beyond spell entry (from either the `spells.{source}` buckets
+ * or a `classSpells[].spells` list — both use the same `{ definition, prepared }`
+ * shape) into a Foundry Item data object, preferring a compendium match for fully
+ * configured rolling activities and icons.
+ * @returns {Promise<Object|null>} the mapped item, or null if the entry has no definition.
+ */
+async function mapDDBSpell(spellData) {
+  const def = spellData.definition;
+  if (!def) return null;
+
+  // Try looking up the spell in the native system spells compendium
+  let compendiumSpell = null;
+  if (typeof game !== "undefined" && game.packs) {
+    try {
+      const pack = game.packs.get("dnd5e.spells");
+      if (pack) {
+        const index = await pack.getIndex();
+        const normDefName = normalizeItemName(def.name);
+        const entry = index.find(e => normalizeItemName(e.name) === normDefName);
+        if (entry) {
+          const doc = await pack.getDocument(entry._id);
+          compendiumSpell = doc.toObject();
+        }
+      }
+    } catch (err) {
+      console.warn(`[DDB-Bridge] Error fetching compendium spell for ${def.name}:`, err);
+    }
+  }
+
+  if (compendiumSpell) {
+    return {
+      ...compendiumSpell,
+      name: def.name,
+      _id: undefined,
+      system: {
+        ...compendiumSpell.system,
+        preparation: {
+          prepared: !!spellData.prepared
+        }
+      }
+    };
+  }
+
+  return {
+    name: def.name,
+    type: "spell",
+    system: {
+      level: def.level || 0,
+      preparation: {
+        prepared: !!spellData.prepared
+      }
+    }
+  };
+}
+
+/**
  * Parses D&D Beyond character JSON data into a Foundry VTT Actor and Items update structure.
  * Target: Foundry VTT v14 and D&D 5e system v3.x.
  * 
@@ -352,63 +408,33 @@ export async function parseDDBCharacter(ddbData) {
     }
   }
 
-  // Parse spells
+  // Parse spells granted outside the normal class spell list (a feat- or
+  // item-granted spell, a racial spell) — NOT a caster's actual known/prepared list.
   const spellSources = ["class", "race", "item", "feat"];
   if (char.spells) {
     for (const source of spellSources) {
       const spellList = char.spells[source];
       if (Array.isArray(spellList)) {
         for (const spellData of spellList) {
-          const def = spellData.definition;
-          if (!def) continue;
-
-          // Try looking up the spell in the native system spells compendium
-          let compendiumSpell = null;
-          if (typeof game !== "undefined" && game.packs) {
-            try {
-              const pack = game.packs.get("dnd5e.spells");
-              if (pack) {
-                const index = await pack.getIndex();
-                const normDefName = normalizeItemName(def.name);
-                const entry = index.find(e => normalizeItemName(e.name) === normDefName);
-                if (entry) {
-                  const doc = await pack.getDocument(entry._id);
-                  compendiumSpell = doc.toObject();
-                }
-              }
-            } catch (err) {
-              console.warn(`[DDB-Bridge] Error fetching compendium spell for ${def.name}:`, err);
-            }
-          }
-
-          let mappedSpell;
-          if (compendiumSpell) {
-            mappedSpell = {
-              ...compendiumSpell,
-              name: def.name,
-              _id: undefined,
-              system: {
-                ...compendiumSpell.system,
-                preparation: {
-                  prepared: !!spellData.prepared
-                }
-              }
-            };
-          } else {
-            mappedSpell = {
-              name: def.name,
-              type: "spell",
-              system: {
-                level: def.level || 0,
-                preparation: {
-                  prepared: !!spellData.prepared
-                }
-              }
-            };
-          }
-
-          items.push(mappedSpell);
+          const mappedSpell = await mapDDBSpell(spellData);
+          if (mappedSpell) items.push(mappedSpell);
         }
+      }
+    }
+  }
+
+  // Parse each class's actual known/prepared spell list. This is a SEPARATE
+  // top-level field from `char.spells` above — it's where a caster's real spell
+  // list lives, including a Warlock's known spells (e.g. Eldritch Blast) and a
+  // Wizard's spellbook. Without this, "spells known" casters import with no
+  // spell items at all, even though `char.spells.class` may look populated.
+  if (Array.isArray(char.classSpells)) {
+    for (const classEntry of char.classSpells) {
+      const spellList = classEntry.spells;
+      if (!Array.isArray(spellList)) continue;
+      for (const spellData of spellList) {
+        const mappedSpell = await mapDDBSpell(spellData);
+        if (mappedSpell) items.push(mappedSpell);
       }
     }
   }

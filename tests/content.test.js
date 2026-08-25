@@ -355,4 +355,90 @@ describe("Companion Extension Content Script Helpers", () => {
       expect(globalThis.checkRollDebounce("Longsword", "attack")).toBe(true);
     });
   });
+
+  describe("handleRollClick - suppress D&D Beyond's native roll", () => {
+    it("should preventDefault and stopImmediatePropagation for a recognized roll target, so D&D Beyond does not roll natively", () => {
+      globalThis.resetRollDebounce();
+
+      const row = document.createElement("div");
+      row.className = "ct-combat-attack";
+      const nameEl = document.createElement("span");
+      nameEl.className = "ct-combat-attack__name";
+      nameEl.textContent = "Greatsword";
+      const button = document.createElement("button");
+      button.className = "integrated-dice__container";
+      row.appendChild(nameEl);
+      row.appendChild(button);
+      document.body.appendChild(row);
+
+      const postMessageSpy = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
+      const event = {
+        target: button,
+        preventDefault: vi.fn(),
+        stopImmediatePropagation: vi.fn()
+      };
+
+      const handled = globalThis.handleRollClick(event);
+
+      expect(handled).toBe(true);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopImmediatePropagation).toHaveBeenCalled();
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "ROLL_ACTION", data: expect.objectContaining({ name: "Greatsword", type: "attack" }) }),
+        "*"
+      );
+
+      postMessageSpy.mockRestore();
+    });
+
+    it("should still suppress the native roll for a debounced duplicate click, even though it isn't forwarded to Foundry", () => {
+      globalThis.resetRollDebounce();
+
+      const button = document.createElement("button");
+      button.className = "ddbc-roll-button";
+      document.body.appendChild(button);
+
+      const postMessageSpy = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
+      const makeEvent = () => ({
+        target: button,
+        preventDefault: vi.fn(),
+        stopImmediatePropagation: vi.fn()
+      });
+
+      const first = makeEvent();
+      globalThis.handleRollClick(first);
+      postMessageSpy.mockClear();
+
+      // Second click within the 500ms debounce window
+      const second = makeEvent();
+      const handled = globalThis.handleRollClick(second);
+
+      expect(handled).toBe(true);
+      // Suppression must happen regardless of debounce — otherwise a rapid
+      // double-click rolls natively in D&D Beyond with nothing sent to Foundry.
+      expect(second.preventDefault).toHaveBeenCalled();
+      expect(second.stopImmediatePropagation).toHaveBeenCalled();
+      expect(postMessageSpy).not.toHaveBeenCalled();
+
+      postMessageSpy.mockRestore();
+    });
+
+    it("should return false and not touch the event for a click that isn't a roll target", () => {
+      const div = document.createElement("div");
+      div.className = "some-other-class";
+      document.body.appendChild(div);
+
+      const event = {
+        target: div,
+        preventDefault: vi.fn(),
+        stopImmediatePropagation: vi.fn()
+      };
+
+      const handled = globalThis.handleRollClick(event);
+
+      expect(handled).toBe(false);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    });
+  });
 });

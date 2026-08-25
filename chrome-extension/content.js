@@ -61,31 +61,9 @@ function initializeBridge() {
   setupContextMenuObserver();
 
   // 2. Roll / Click Interception
-  // NOTE: We do NOT call preventDefault or stopPropagation here.
-  // We let D&D Beyond roll the dice naturally (animation plays, result shown).
-  // We simply observe the action and forward it to Foundry with the roll mode.
   document.addEventListener("click", (event) => {
     if (!shouldProcessClick(event)) return;
-
-    const rollTarget = findRollTarget(event.target);
-    if (!rollTarget) return;
-
-    const actionData = extractActionData(rollTarget);
-    if (actionData) {
-      if (!checkRollDebounce(actionData.name, actionData.type)) {
-        console.log("[DDB-Bridge] Debouncing duplicate click for:", actionData.name);
-        return;
-      }
-      // Include the roll mode selected via right-click context menu
-      actionData.rollMode = _rollMode;
-      console.log("[DDB-Bridge] Sending action to Foundry:", actionData);
-      window.parent.postMessage({
-        source: "ddb-bridge-extension",
-        characterId: characterId,
-        type: "ROLL_ACTION",
-        data: actionData
-      }, "*");
-    }
+    handleRollClick(event);
   }, true);
 
   // 3. DOM Observer for state updates from D&D Beyond -> Foundry
@@ -390,8 +368,46 @@ function extractActionData(element) {
   return { name, type };
 }
 
+/**
+ * Handles a captured-phase click on the document: identifies whether it targets a
+ * D&D Beyond roll control, and if so, suppresses D&D Beyond's own native roll and
+ * forwards the action to Foundry instead. Foundry is the sole roller — without this,
+ * the same action rolled independently on both sides (see #main.js handleRollAction).
+ *
+ * @returns {boolean} true if a roll action was identified and suppressed (whether or
+ *   not it was actually forwarded — a debounced duplicate is still suppressed so a
+ *   rapid double-click can't roll natively in D&D Beyond just because Foundry ignored it).
+ */
+function handleRollClick(event) {
+  const rollTarget = findRollTarget(event.target);
+  if (!rollTarget) return false;
 
+  const actionData = extractActionData(rollTarget);
+  if (!actionData) return false;
 
+  // D&D Beyond's own roll handling is attached below `document` in the click's
+  // propagation path (either a delegated root listener or a listener on the
+  // target itself). Halting the event here, before it reaches that target,
+  // stops D&D Beyond's native roll animation/result from firing at all.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  if (!checkRollDebounce(actionData.name, actionData.type)) {
+    console.log("[DDB-Bridge] Debouncing duplicate click for:", actionData.name);
+    return true;
+  }
+
+  // Include the roll mode selected via right-click context menu
+  actionData.rollMode = _rollMode;
+  console.log("[DDB-Bridge] Sending action to Foundry:", actionData);
+  window.parent.postMessage({
+    source: "ddb-bridge-extension",
+    characterId: characterId,
+    type: "ROLL_ACTION",
+    data: actionData
+  }, "*");
+  return true;
+}
 
 /**
  * Sets up a MutationObserver to detect D&D Beyond's right-click context menu.
@@ -626,6 +642,7 @@ if (typeof globalThis !== "undefined") {
   globalThis.extractActionData = extractActionData;
   globalThis.findParentByClassKeyword = findParentByClassKeyword;
   globalThis.findChildByClassKeyword = findChildByClassKeyword;
+  globalThis.handleRollClick = handleRollClick;
   // Roll mode state — exposed for testing
   globalThis.getRollMode = getRollMode;
   globalThis.setRollMode = setRollMode;

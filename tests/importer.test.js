@@ -56,7 +56,7 @@ describe("D&D Beyond Character Importer", () => {
   it("should parse inventory weapons and armor into items array", async () => {
     const result = await parseDDBCharacter(characterSample);
     
-    expect(result.items).toHaveLength(3); // 2 inventory items + 1 spell
+    expect(result.items).toHaveLength(4); // 2 inventory items + 1 spells.class spell + 1 classSpells spell
     
     const greataxe = result.items.find(i => i.name === "Greataxe");
     expect(greataxe).toBeDefined();
@@ -75,12 +75,27 @@ describe("D&D Beyond Character Importer", () => {
 
   it("should parse spells into items array", async () => {
     const result = await parseDDBCharacter(characterSample);
-    
+
     const cureWounds = result.items.find(i => i.name === "Cure Wounds");
     expect(cureWounds).toBeDefined();
     expect(cureWounds.type).toBe("spell");
     expect(cureWounds.system.level).toBe(1);
     expect(cureWounds.system.preparation.prepared).toBe(true);
+  });
+
+  it("should parse a class's known/prepared spell list from classSpells, not just spells.class", async () => {
+    // classSpells is where a caster's actual spell list lives (e.g. a Warlock's
+    // known spells, including at-will cantrips) — distinct from char.spells.class,
+    // which only covers spells granted outside the normal spell-list mechanism.
+    // Before this fix, classSpells was never read, so these spells never became
+    // Foundry items and rolling them reported "not found on Foundry actor."
+    const result = await parseDDBCharacter(characterSample);
+
+    const eldritchBlast = result.items.find(i => i.name === "Eldritch Blast");
+    expect(eldritchBlast).toBeDefined();
+    expect(eldritchBlast.type).toBe("spell");
+    expect(eldritchBlast.system.level).toBe(0);
+    expect(eldritchBlast.system.preparation.prepared).toBe(true);
   });
 
   it("should parse and calculate walking movement speed correctly", async () => {
