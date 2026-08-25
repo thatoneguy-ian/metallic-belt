@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "D&D Beyond Foundry VTT Companion",
+  "version": "1.0.0",
+  "description": "Bridges the embedded D&D Beyond character sheet with your active Foundry VTT session.",
+  "permissions": [
+    "declarativeNetRequest",
+    "cookies"
+  ],
+  "host_permissions": [
+    "https://*.dndbeyond.com/*"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "dndbeyond_rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.dndbeyond.com/characters/*"
+      ],
+      "js": ["shim.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.dndbeyond.com/characters/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}

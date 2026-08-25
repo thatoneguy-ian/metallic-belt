@@ -1,0 +1,33 @@
+<form class="{{cssClass}} ddb-sheet-container" autocomplete="off">
+  {{#if characterId}}
+    <div class="ddb-sheet-header">
+      <div class="ddb-sheet-title-area">
+        <h3>D&D Beyond Bridge: {{actorName}}</h3>
+        <span class="ddb-login-hint">
+          <i class="fas fa-info-circle"></i>
+          If sheet is locked, <a href="https://www.dndbeyond.com" target="_blank" class="ddb-login-link">Log In in New Tab</a> and refresh.
+        </span>
+      </div>
+      <div class="ddb-sheet-header-actions">
+        <button class="ddb-btn ddb-sync-btn" title="Force Sync stats and items from D&D Beyond">
+          <i class="fas fa-sync"></i> Sync Stats
+        </button>
+        <button class="ddb-btn ddb-config-btn" title="Change D&D Beyond Character URL">
+          <i class="fas fa-cog"></i> Config
+        </button>
+      </div>
+    </div>
+    <iframe class="ddb-sheet-iframe" src="https://www.dndbeyond.com/characters/{{characterId}}" allow="autoplay; clipboard-write"></iframe>
+  {{else}}
+    <div class="ddb-setup-panel">
+      <div class="ddb-setup-card">
+        <h2>D&D Beyond Bridge</h2>
+        <p>To get started, enter your D&D Beyond Character URL or Character ID below. This will link this Foundry Actor to your D&D Beyond character sheet.</p>
+        <div class="ddb-input-group">
+          <input type="text" class="ddb-input ddb-char-url" placeholder="https://www.dndbeyond.com/characters/12345678" />
+          <button class="ddb-btn ddb-save-btn">Link Character</button>
+        </div>
+      </div>
+    </div>
+  {{/if}}
+</form>

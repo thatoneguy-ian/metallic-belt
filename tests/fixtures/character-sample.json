@@ -1,0 +1,125 @@
+{
+  "success": true,
+  "message": "Character successfully retrieved.",
+  "data": {
+    "id": 98765432,
+    "decorations": {
+      "avatarUrl": "https://media.dndbeyond.com/character-avatars/12345.jpeg"
+    },
+    "name": "Grog the Mighty",
+    "baseHitPoints": 35,
+    "removedHitPoints": 10,
+    "temporaryHitPoints": 5,
+    "stats": [
+      { "id": 1, "value": 18 },
+      { "id": 2, "value": 14 },
+      { "id": 3, "value": 16 },
+      { "id": 4, "value": 8 },
+      { "id": 5, "value": 10 },
+      { "id": 6, "value": 8 }
+    ],
+    "bonusStats": [
+      { "id": 1, "value": null },
+      { "id": 2, "value": null },
+      { "id": 3, "value": null },
+      { "id": 4, "value": null },
+      { "id": 5, "value": null },
+      { "id": 6, "value": null }
+    ],
+    "overrideStats": [
+      { "id": 1, "value": null },
+      { "id": 2, "value": null },
+      { "id": 3, "value": null },
+      { "id": 4, "value": null },
+      { "id": 5, "value": null },
+      { "id": 6, "value": null }
+    ],
+    "modifiers": {
+      "race": [
+        { "type": "bonus", "subType": "strength-score", "value": 2 },
+        { "type": "bonus", "subType": "constitution-score", "value": 1 },
+        { "type": "bonus", "subType": "speed", "value": 10 },
+        { "type": "set", "subType": "unarmored-armor-class", "value": 17 },
+        { "type": "bonus", "subType": "armor-class", "value": 1 },
+        { "type": "set-base", "subType": "blindsight", "value": 10 },
+        { "type": "set-base", "subType": "darkvision", "value": 60 }
+      ],
+      "class": [],
+      "background": [],
+      "item": [],
+      "feat": []
+    },
+    "race": {
+      "baseSpeed": 30,
+      "weightSpeeds": {
+        "normal": {
+          "walk": 30
+        }
+      }
+    },
+    "classes": [
+      {
+        "level": 5,
+        "isStartingClass": true,
+        "definition": {
+          "name": "Barbarian",
+          "hitDice": "d12"
+        }
+      }
+    ],
+    "inventory": [
+      {
+        "id": 1001,
+        "equipped": true,
+        "quantity": 1,
+        "definition": {
+          "name": "Greataxe",
+          "description": "A heavy two-handed axe.",
+          "filterType": "Weapon",
+          "type": "Martial Melee Weapon",
+          "damage": {
+            "diceCount": 1,
+            "diceValue": 12,
+            "diceMultiplier": null,
+            "fixedValue": null,
+            "diceString": "1d12"
+          },
+          "damageType": "Slashing"
+        }
+      },
+      {
+        "id": 1002,
+        "equipped": true,
+        "quantity": 1,
+        "definition": {
+          "name": "Leather Armor",
+          "description": "Simple leather protection.",
+          "filterType": "Armor",
+          "type": "Light Armor",
+          "armorClass": 11
+        }
+      }
+    ],
+    "spells": {
+      "class": [
+        {
+          "definition": {
+            "name": "Cure Wounds",
+            "level": 1,
+            "school": "Evocation",
+            "range": { "origin": "Touch" },
+            "activation": { "activationType": 1, "activationTime": 1 }
+          },
+          "prepared": true
+        }
+      ],
+      "race": [],
+      "item": [],
+      "feat": []
+    },
+    "spellSlots": [
+      { "level": 1, "used": 2, "max": 4 },
+      { "level": 2, "used": 0, "max": 2 }
+    ]
+  }
+}

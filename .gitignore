@@ -1,0 +1,5 @@
+node_modules/
+chrome-extension/_metadata/
+.planning/milestone.lock
+.gsd/
+*.log
