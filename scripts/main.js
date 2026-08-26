@@ -64,10 +64,19 @@ Hooks.on("renderChatMessageHTML", (message, html, data) => {
 
 // Hook to sync native updates back to D&D Beyond
 Hooks.on("updateActor", (actor, change, options, userId) => {
-  // Only sync if the current user made the change
-  if (userId !== game.userId) return;
   // Prevent infinite loop if this update was triggered by our own sync
   if (options.ddbBridgeSync) return;
+
+  // NOTE: deliberately not gating on `userId === game.userId` here. Foundry
+  // broadcasts updateActor to every connected client, including the client
+  // that DIDN'T make the change — e.g. a GM applying damage to a player's
+  // actor fires this hook on the player's own browser too, with `userId`
+  // set to the GM's id. Gating on the triggering user's id meant that
+  // exact case (GM deals damage, the most common combat pattern) never
+  // synced: it fails this check on the player's client, which is the only
+  // client that actually has the linked D&D Beyond sheet open. The `sheet`
+  // lookup below already scopes this correctly per-client — only a client
+  // with the matching DDBEmbeddedSheet open does anything.
 
   const characterId = actor.getFlag("ddb-bridge", "characterId");
   if (!characterId) return;

@@ -144,17 +144,27 @@ export async function parseDDBCharacter(ddbData) {
     abilities[key] = { value: score };
   }
 
-  // 2. Hit Points Mapping
-  const maxHP = char.baseHitPoints || 0;
-  const currentHP = Math.max(0, maxHP - (char.removedHitPoints || 0));
-  const tempHP = char.temporaryHitPoints || 0;
-
-  // 3. Classes and Levels
+  // 2. Classes and Levels (resolved before HP below — total level feeds the CON HP bonus)
   const classesList = char.classes || [];
   const level = classesList.reduce((sum, c) => sum + (c.level || 0), 0);
-  
+
   const startingClass = classesList.find(c => c.isStartingClass) || classesList[0];
   const className = startingClass ? startingClass.definition.name : "";
+
+  // 3. Hit Points Mapping
+  // char.baseHitPoints is ONLY the hit-die-derived portion of max HP — it does NOT
+  // include the CON modifier bonus (CON mod x total levels), which D&D Beyond adds
+  // separately. Verified against ddb-importer's reference implementation
+  // (src/parser/character/hp.ts): maxHitPoints = constitutionHP + baseHitPoints,
+  // unless overrideHitPoints is set, in which case that manual value replaces the
+  // calculation entirely rather than being added to it. Omitting both meant every
+  // imported character's max HP was short by its CON contribution.
+  const overrideHitPoints = char.overrideHitPoints || 0;
+  const conModForHP = Math.floor(((abilities.con?.value ?? 10) - 10) / 2);
+  const constitutionHP = conModForHP * level;
+  const maxHP = overrideHitPoints !== 0 ? overrideHitPoints : (char.baseHitPoints || 0) + constitutionHP;
+  const currentHP = Math.max(0, maxHP - (char.removedHitPoints || 0));
+  const tempHP = char.temporaryHitPoints || 0;
 
   // 4. Spell Slots
   const spells = {};

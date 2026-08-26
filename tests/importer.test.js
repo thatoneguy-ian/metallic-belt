@@ -30,15 +30,30 @@ describe("D&D Beyond Character Importer", () => {
     expect(result.actorData.system.abilities.cha.value).toBe(8);
   });
 
-  it("should parse hit points correctly", async () => {
+  it("should parse hit points correctly, including the CON modifier bonus baseHitPoints omits", async () => {
     const result = await parseDDBCharacter(characterSample);
-    
-    // Max HP = 35 (baseHitPoints)
-    // Current HP = 35 - 10 (removedHitPoints) = 25
+
+    // baseHitPoints (35) is only the hit-die-derived portion — D&D Beyond adds
+    // CON mod x total level on top, which is NOT included in baseHitPoints itself.
+    // CON is 17 (base 16 + 1 racial bonus), mod +3, x level 5 = +15.
+    // Max HP = 35 (baseHitPoints) + 15 (CON bonus) = 50
+    // Current HP = 50 - 10 (removedHitPoints) = 40
     // Temp HP = 5
-    expect(result.actorData.system.attributes.hp.max).toBe(35);
-    expect(result.actorData.system.attributes.hp.value).toBe(25);
+    expect(result.actorData.system.attributes.hp.max).toBe(50);
+    expect(result.actorData.system.attributes.hp.value).toBe(40);
     expect(result.actorData.system.attributes.hp.temp).toBe(5);
+  });
+
+  it("should use overrideHitPoints in place of the baseHitPoints+CON calculation when set", async () => {
+    const overridden = JSON.parse(JSON.stringify(characterSample));
+    overridden.data.overrideHitPoints = 999;
+
+    const result = await parseDDBCharacter(overridden);
+
+    // A manual override in D&D Beyond replaces the calculation entirely — it is
+    // not added on top of baseHitPoints + CON bonus.
+    expect(result.actorData.system.attributes.hp.max).toBe(999);
+    expect(result.actorData.system.attributes.hp.value).toBe(989); // 999 - 10 removedHitPoints
   });
 
   it("should parse spell slots remaining and max", async () => {

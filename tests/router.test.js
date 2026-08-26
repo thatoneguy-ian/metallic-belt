@@ -23,6 +23,11 @@ globalThis.ui = {
   },
   windows: {}
 };
+globalThis.foundry = {
+  utils: {
+    getProperty: (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj)
+  }
+};
 
 // Mock game database
 const mockActor = {
@@ -75,6 +80,8 @@ globalThis.game = {
 
 // Import main.js so the event listener is registered
 await import("../foundry-module/scripts/main.js");
+// Loaded after mocks (ActorSheet etc.) so its `extends ActorSheet` resolves correctly
+const { DDBEmbeddedSheet } = await import("../foundry-module/scripts/embedded-sheet.js");
 
 describe("Foundry Module Message Router", () => {
   beforeEach(() => {
@@ -485,6 +492,80 @@ describe("Foundry Module Message Router", () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(mockActor.items[0].use).toHaveBeenCalled();
+  });
+
+  describe("updateActor sync back to D&D Beyond", () => {
+    // Builds a mock DDBEmbeddedSheet "window" for ui.windows without invoking
+    // the real ActorSheet/Application constructor chain (which isn't mocked
+    // beyond an empty class) — just enough shape for the hook's own lookups.
+    function makeMockSheet(actor, iframeContentWindow) {
+      const sheet = Object.create(DDBEmbeddedSheet.prototype);
+      sheet.actor = actor;
+      const iframeEl = { contentWindow: iframeContentWindow };
+      sheet.element = { find: vi.fn((selector) => selector === ".ddb-sheet-iframe" ? [iframeEl] : []) };
+      return sheet;
+    }
+
+    it("should push an HP change to D&D Beyond even when a DIFFERENT user (e.g. the GM) triggered it, as long as THIS client has the sheet open", () => {
+      const updateActorCallback = globalThis.registeredHooks.updateActor;
+      expect(updateActorCallback).toBeDefined();
+
+      const postMessageSpy = vi.fn();
+      globalThis.ui.windows = {
+        1: makeMockSheet(mockActor, { postMessage: postMessageSpy })
+      };
+
+      // userId is the GM's id — deliberately NOT equal to game.userId ("user1") —
+      // simulating the GM applying damage on their own client, while THIS
+      // callback instance represents the player's client where the sheet is open.
+      updateActorCallback(
+        mockActor,
+        { system: { attributes: { hp: { value: 20 } } } },
+        {},
+        "gm-user-id"
+      );
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "ddb-bridge-foundry",
+          type: "STATE_UPDATE",
+          data: expect.objectContaining({ hp: 20 })
+        }),
+        "*"
+      );
+
+      globalThis.ui.windows = {};
+    });
+
+    it("should NOT push when the update was caused by our own incoming sync (ddbBridgeSync flag)", () => {
+      const updateActorCallback = globalThis.registeredHooks.updateActor;
+      const postMessageSpy = vi.fn();
+      globalThis.ui.windows = {
+        1: makeMockSheet(mockActor, { postMessage: postMessageSpy })
+      };
+
+      updateActorCallback(
+        mockActor,
+        { system: { attributes: { hp: { value: 20 } } } },
+        { ddbBridgeSync: true },
+        "user1"
+      );
+
+      expect(postMessageSpy).not.toHaveBeenCalled();
+      globalThis.ui.windows = {};
+    });
+
+    it("should not throw and should not push when no matching sheet is open on this client", () => {
+      const updateActorCallback = globalThis.registeredHooks.updateActor;
+      globalThis.ui.windows = {}; // no open DDBEmbeddedSheet for this actor
+
+      expect(() => updateActorCallback(
+        mockActor,
+        { system: { attributes: { hp: { value: 20 } } } },
+        {},
+        "gm-user-id"
+      )).not.toThrow();
+    });
   });
 
   describe("renderChatMessage auto-click behavior", () => {
