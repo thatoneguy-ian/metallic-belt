@@ -12,54 +12,10 @@ Hooks.once("init", () => {
   });
 });
 
-// State to track pending chat card clicks
-let pendingCardClick = null;
-
 // Hook to start listening to the extension bridge when Foundry is ready
 Hooks.once("ready", () => {
   window.addEventListener("message", handleIncomingBridgeMessage);
   console.log("[DDB-Bridge] Ready. Active listener registered.");
-});
-
-// Hook to auto-click the Attack/Damage button when a chat card is rendered
-Hooks.on("renderChatMessageHTML", (message, html, data) => {
-  if (!pendingCardClick) return;
-
-  const root = (html && typeof html.find === "function")
-    ? html[0]
-    : (html instanceof Element ? html : (html && html.length ? html[0] : html));
-
-  if (!root || typeof root.querySelector !== "function") return;
-
-  // Extract item name from HTML.
-  // Search within the card body first to avoid matching the actor's name (which also uses the '.title' class) in the message header.
-  const cardEl = root.querySelector(".chat-card") || root.querySelector(".activation-card") || root.querySelector(".card-header") || root.querySelector(".message-content");
-  const titleEl = cardEl
-    ? (cardEl.querySelector(".title") || cardEl.querySelector(".card-name") || cardEl.querySelector("h3"))
-    : (root.querySelector(".title") || root.querySelector(".card-name") || root.querySelector("h3"));
-
-  const itemName = titleEl ? titleEl.textContent.trim() : (message.item?.name || message.flags?.dnd5e?.use?.item?.name || "");
-
-  if (!itemName || itemName.toLowerCase() !== pendingCardClick.itemName) return;
-
-  const action = pendingCardClick.action; // "attack" or "damage"
-  const rollActionName = `roll${action.charAt(0).toUpperCase() + action.slice(1)}`; // e.g. rollAttack, rollDamage
-
-
-  const button = root.querySelector(`button[data-action="${action}"]`) ||
-                 root.querySelector(`[data-action="${action}"]`) ||
-                 root.querySelector(`button[data-action="${rollActionName}"]`) ||
-                 root.querySelector(`[data-action="${rollActionName}"]`);
-
-  if (button) {
-    console.log(`[DDB-Bridge] Auto-clicking chat card button for action: ${action}`);
-
-    // Clear pending state
-    const currentRollMode = pendingCardClick.rollMode;
-    pendingCardClick = null;
-
-    clickWithFastForward(button, action, currentRollMode);
-  }
 });
 
 // Hook to sync native updates back to D&D Beyond
@@ -306,6 +262,23 @@ async function handleDDBJsonResponse(actor, ddbJson, scrapedStats = null, avatar
 
 /**
  * Triggers a native Foundry roll for an item/spell, or executes saves/checks.
+ *
+ * For attack/damage, this calls the item's AttackActivity directly
+ * (activity.rollAttack()/rollDamage()) instead of item.use(). item.use() ->
+ * activity.use() has its OWN, separate "usage dialog" gate, and its internal
+ * auto-chain into the actual roll (AttackActivity#_triggerSubsequentActions)
+ * hardcodes an empty {} dialog config when it calls rollAttack() — discarding
+ * any dialog override passed into use() and falling back to keybinding
+ * detection for the roll itself. That makes it structurally impossible to
+ * force-skip the roll's configuration dialog through item.use(), regardless
+ * of the triggering click's modifier keys — confirmed against the actual
+ * dnd5e 5.3.3 source (module/documents/item.mjs#use,
+ * module/documents/activity/mixin.mjs#use,
+ * module/documents/activity/attack.mjs#rollAttack/_triggerSubsequentActions).
+ * Calling activity.rollAttack()/rollDamage() directly bypasses that gate:
+ * their own `dialog` parameter is used as-is by D20Roll/DamageRoll's
+ * buildConfigure, where `dialog.configure === false` skips the dialog
+ * unconditionally — no dependency on click events or keybindings at all.
  */
 async function handleRollAction(actor, data) {
   const { name, type, rollMode } = data;
@@ -318,19 +291,26 @@ async function handleRollAction(actor, data) {
       return;
     }
 
-    console.log(`[DDB-Bridge] Rolling item: ${item.name} (rollMode: ${rollMode || "flat"})`);
+    const activity = item.system.activities?.getByType?.("attack")?.[0];
+    if (!activity) {
+      ui.notifications.warn(`"${item.name}" has no rollable attack activity on the Foundry actor.`);
+      return;
+    }
 
-    // Set pending chat card click
-    const action = type === "damage" ? "damage" : "attack";
-    pendingCardClick = {
-      itemName: item.name.toLowerCase(),
-      action: action,
-      rollMode: rollMode || "flat"
-    };
-
-    // item.use() creates the chat card.  The Attack Roll dialog appears later
-    // when the player (or a future auto-click) presses ATTACK on the card.
-    await item.use();
+    if (type === "damage") {
+      console.log(`[DDB-Bridge] Rolling damage for: ${item.name}`);
+      // No advantage/disadvantage concept for damage — configure:false skips
+      // its dialog while inheriting whatever crit status a prior associated
+      // attack roll already set (there is none here; this is an independent
+      // damage-only roll, matching D&D Beyond's own separate Damage button).
+      await activity.rollDamage({}, { configure: false });
+    } else {
+      console.log(`[DDB-Bridge] Rolling attack for: ${item.name} (rollMode: ${rollMode || "flat"})`);
+      await activity.rollAttack(
+        { advantage: rollMode === "advantage", disadvantage: rollMode === "disadvantage" },
+        { configure: false }
+      );
+    }
 
   } else if (type === "save") {
     const abilityKey = getAbilityKey(name);
@@ -363,51 +343,6 @@ async function handleRollAction(actor, data) {
     }
   }
 }
-
-/**
- * Clicks a chat card's roll button (rollAttack/rollDamage) with the modifier
- * key that makes dnd5e's own D20Roll/DamageRoll pipeline skip its roll
- * configuration dialog entirely, rather than waiting for that dialog to render
- * and guessing which button to click on it.
- *
- * This is dnd5e's own documented "fast forward" convention — the same keys a
- * player would hold to skip the dialog by hand (module/dice/d20-roll.mjs and
- * module/utils.mjs#areKeysPressed in dnd5e 5.3.x read these directly off the
- * triggering click event, matching the core keybindings registered in
- * module/settings.mjs):
- *   - Shift → skipDialogNormal   (roll immediately, no advantage/disadvantage)
- *   - Alt   → skipDialogAdvantage
- *   - Ctrl  → skipDialogDisadvantage
- *
- * For a damage roll there is no advantage/disadvantage concept — Shift is used
- * unconditionally so the dialog is skipped while inheriting whatever crit
- * status the system already determined from the associated attack roll, if any.
- *
- * @param {HTMLElement} button
- * @param {"attack"|"damage"} action
- * @param {"advantage"|"flat"|"disadvantage"} [rollMode]
- */
-function clickWithFastForward(button, action, rollMode) {
-  const modifiers = action === "damage"
-    ? { shiftKey: true, altKey: false, ctrlKey: false }
-    : {
-        shiftKey: rollMode !== "advantage" && rollMode !== "disadvantage",
-        altKey: rollMode === "advantage",
-        ctrlKey: rollMode === "disadvantage"
-      };
-
-  console.log(`[DDB-Bridge] Fast-forwarding ${action} roll (rollMode: ${rollMode || "flat"})`);
-  // No `view` property: dnd5e's own fast-forward detection (areKeysPressed) only
-  // reads shiftKey/altKey/ctrlKey off the event, and `view` requires the exact
-  // Window instance that owns the target's realm — setting it is unnecessary
-  // here and throws in some embedding contexts (e.g. jsdom) if that doesn't match.
-  button.dispatchEvent(new MouseEvent("click", {
-    bubbles: true,
-    cancelable: true,
-    ...modifiers
-  }));
-}
-
 
 /**
  * Updates actor's HP and spell slots directly from iframe.

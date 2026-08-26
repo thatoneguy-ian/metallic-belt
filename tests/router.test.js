@@ -29,6 +29,13 @@ globalThis.foundry = {
   }
 };
 
+// Mock attack Activity — the object handleRollAction now calls rollAttack/rollDamage
+// on directly (bypassing item.use()/activity.use(), see main.js for why).
+const mockAttackActivity = {
+  rollAttack: vi.fn().mockResolvedValue([]),
+  rollDamage: vi.fn().mockResolvedValue([])
+};
+
 // Mock game database
 const mockActor = {
   id: "actor123",
@@ -58,7 +65,11 @@ const mockActor = {
         name: "Longsword",
         type: "weapon",
         _id: "item1",
-        use: vi.fn().mockResolvedValue({})
+        system: {
+          activities: {
+            getByType: vi.fn((type) => type === "attack" ? [mockAttackActivity] : [])
+          }
+        }
       }
     ];
     arr.toObject = vi.fn().mockReturnValue(arr);
@@ -88,7 +99,7 @@ describe("Foundry Module Message Router", () => {
     vi.clearAllMocks();
   });
 
-  it("should route ROLL_ACTION for attack to item.use()", async () => {
+  it("should route ROLL_ACTION for attack to the item's attack activity rollAttack()", async () => {
     const event = new MessageEvent("message", {
       data: {
         source: "ddb-bridge-extension",
@@ -103,7 +114,29 @@ describe("Foundry Module Message Router", () => {
     // Wait short time for async handler
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(mockActor.items[0].use).toHaveBeenCalled();
+    expect(mockAttackActivity.rollAttack).toHaveBeenCalled();
+  });
+
+  it("should warn and not throw when the item has no attack activity", async () => {
+    mockActor.items[0].system.activities.getByType = vi.fn(() => []);
+
+    const event = new MessageEvent("message", {
+      data: {
+        source: "ddb-bridge-extension",
+        characterId: "12345",
+        type: "ROLL_ACTION",
+        data: { name: "Longsword", type: "attack" }
+      }
+    });
+
+    window.dispatchEvent(event);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(globalThis.ui.notifications.warn).toHaveBeenCalled();
+    expect(mockAttackActivity.rollAttack).not.toHaveBeenCalled();
+
+    // Restore for subsequent tests
+    mockActor.items[0].system.activities.getByType = vi.fn((type) => type === "attack" ? [mockAttackActivity] : []);
   });
 
   it("should route ROLL_ACTION for save to modern actor.rollSavingThrow() if available", async () => {
@@ -436,13 +469,7 @@ describe("Foundry Module Message Router", () => {
     });
   });
 
-  it("should route ROLL_ACTION attack with rollMode 'flat' by calling item.use() without any dialog manipulation", async () => {
-    const useCallArgs = [];
-    mockActor.items[0].use = vi.fn().mockImplementation((...args) => {
-      useCallArgs.push(args);
-      return Promise.resolve({});
-    });
-
+  it("should roll a flat attack with configure:false and no advantage/disadvantage", async () => {
     const event = new MessageEvent("message", {
       data: {
         source: "ddb-bridge-extension",
@@ -455,12 +482,13 @@ describe("Foundry Module Message Router", () => {
     window.dispatchEvent(event);
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(mockActor.items[0].use).toHaveBeenCalled();
+    expect(mockAttackActivity.rollAttack).toHaveBeenCalledWith(
+      { advantage: false, disadvantage: false },
+      { configure: false }
+    );
   });
 
-  it("should route ROLL_ACTION attack with rollMode 'advantage'", async () => {
-    mockActor.items[0].use = vi.fn().mockResolvedValue({});
-
+  it("should roll an advantage attack with configure:false and advantage:true", async () => {
     const event = new MessageEvent("message", {
       data: {
         source: "ddb-bridge-extension",
@@ -473,12 +501,13 @@ describe("Foundry Module Message Router", () => {
     window.dispatchEvent(event);
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(mockActor.items[0].use).toHaveBeenCalled();
+    expect(mockAttackActivity.rollAttack).toHaveBeenCalledWith(
+      { advantage: true, disadvantage: false },
+      { configure: false }
+    );
   });
 
-  it("should route ROLL_ACTION attack with rollMode 'disadvantage'", async () => {
-    mockActor.items[0].use = vi.fn().mockResolvedValue({});
-
+  it("should roll a disadvantage attack with configure:false and disadvantage:true", async () => {
     const event = new MessageEvent("message", {
       data: {
         source: "ddb-bridge-extension",
@@ -491,7 +520,29 @@ describe("Foundry Module Message Router", () => {
     window.dispatchEvent(event);
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(mockActor.items[0].use).toHaveBeenCalled();
+    expect(mockAttackActivity.rollAttack).toHaveBeenCalledWith(
+      { advantage: false, disadvantage: true },
+      { configure: false }
+    );
+  });
+
+  it("should roll damage with configure:false regardless of rollMode", async () => {
+    // Damage has no advantage/disadvantage concept — configure:false alone
+    // skips its dialog while inheriting whatever crit status a prior
+    // associated attack roll set.
+    const event = new MessageEvent("message", {
+      data: {
+        source: "ddb-bridge-extension",
+        characterId: "12345",
+        type: "ROLL_ACTION",
+        data: { name: "Longsword", type: "damage", rollMode: "advantage" }
+      }
+    });
+
+    window.dispatchEvent(event);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(mockAttackActivity.rollDamage).toHaveBeenCalledWith({}, { configure: false });
   });
 
   describe("updateActor sync back to D&D Beyond", () => {
@@ -568,126 +619,5 @@ describe("Foundry Module Message Router", () => {
     });
   });
 
-  describe("renderChatMessage auto-click behavior", () => {
-    it("should register a Hooks.on('renderChatMessageHTML') listener", () => {
-      expect(globalThis.registeredHooks.renderChatMessageHTML).toBeDefined();
-    });
-
-    // Helper: fires a ROLL_ACTION then feeds a mock chat card into renderChatMessageHTML,
-    // returning the MouseEvent dispatched at the matched button (or undefined if none).
-    async function triggerAndCapture({ type, rollMode, actionAttr }) {
-      const renderChatCallback = globalThis.registeredHooks.renderChatMessageHTML;
-      const mockButton = { dispatchEvent: vi.fn() };
-      const mockTitleEl = { textContent: "Longsword" };
-      const mockHtml = {
-        querySelector: vi.fn((selector) => {
-          if (selector === ".title") return mockTitleEl;
-          if (selector.includes(`data-action="${actionAttr}"`) || selector.includes(`roll${actionAttr.charAt(0).toUpperCase()}${actionAttr.slice(1)}`)) return mockButton;
-          return null;
-        })
-      };
-
-      window.dispatchEvent(new MessageEvent("message", {
-        data: {
-          source: "ddb-bridge-extension",
-          characterId: "12345",
-          type: "ROLL_ACTION",
-          data: { name: "Longsword", type, rollMode }
-        }
-      }));
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      await renderChatCallback({ item: { name: "Longsword" } }, mockHtml);
-
-      expect(mockButton.dispatchEvent).toHaveBeenCalled();
-      return mockButton.dispatchEvent.mock.calls[0][0];
-    }
-
-    it("should auto-click the Attack button, fast-forwarding with Shift (skip dialog, normal) for a flat roll", async () => {
-      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "flat", actionAttr: "attack" });
-      expect(dispatched.type).toBe("click");
-      expect(dispatched.shiftKey).toBe(true);
-      expect(dispatched.altKey).toBe(false);
-      expect(dispatched.ctrlKey).toBe(false);
-    });
-
-    it("should auto-click the Attack button, fast-forwarding with Alt (skip dialog, advantage) for an advantage roll", async () => {
-      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "advantage", actionAttr: "attack" });
-      expect(dispatched.altKey).toBe(true);
-      expect(dispatched.shiftKey).toBe(false);
-      expect(dispatched.ctrlKey).toBe(false);
-    });
-
-    it("should auto-click the Attack button, fast-forwarding with Ctrl (skip dialog, disadvantage) for a disadvantage roll", async () => {
-      const dispatched = await triggerAndCapture({ type: "attack", rollMode: "disadvantage", actionAttr: "attack" });
-      expect(dispatched.ctrlKey).toBe(true);
-      expect(dispatched.shiftKey).toBe(false);
-      expect(dispatched.altKey).toBe(false);
-    });
-
-    it("should auto-click the Damage button, always fast-forwarding with Shift regardless of rollMode", async () => {
-      // Damage rolls have no advantage/disadvantage concept — Shift skips the
-      // dialog while inheriting whatever crit status the attack already set.
-      const dispatched = await triggerAndCapture({ type: "damage", rollMode: "advantage", actionAttr: "damage" });
-      expect(dispatched.shiftKey).toBe(true);
-      expect(dispatched.altKey).toBe(false);
-      expect(dispatched.ctrlKey).toBe(false);
-    });
-
-
-    it("should correctly find the item title when an actor name with class '.title' is in the message header", async () => {
-      const renderChatCallback = globalThis.registeredHooks.renderChatMessageHTML;
-      expect(renderChatCallback).toBeDefined();
-
-      const event = new MessageEvent("message", {
-        data: {
-          source: "ddb-bridge-extension",
-          characterId: "12345",
-          type: "ROLL_ACTION",
-          data: { name: "Longsword", type: "attack", rollMode: "flat" }
-        }
-      });
-      window.dispatchEvent(event);
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Create a DOM structure using real elements since jsdom environment is active
-      const container = document.createElement("div");
-      container.innerHTML = `
-        <li class="chat-message message flexcol">
-          <header class="message-header flexrow">
-            <h4 class="message-sender">
-              <span class="title">Ray Jay Doe</span>
-            </h4>
-          </header>
-          <div class="message-content">
-            <div class="chat-card midi-chat-card activation-card">
-              <header class="summary">
-                <div class="name-stacked border">
-                  <span class="title">Longsword</span>
-                </div>
-              </header>
-              <div class="card-buttons midi-buttons">
-                <button type="button" data-action="rollAttack">Attack</button>
-              </div>
-            </div>
-          </div>
-        </li>
-      `;
-
-      const liElement = container.querySelector("li");
-      const attackButton = liElement.querySelector('button[data-action="rollAttack"]');
-      const dispatchSpy = vi.spyOn(attackButton, "dispatchEvent");
-
-      const mockMessage = {
-        item: { name: "Longsword" }
-      };
-
-      await renderChatCallback(mockMessage, liElement);
-
-      expect(dispatchSpy).toHaveBeenCalled();
-      // rollMode was "flat" — fast-forwards with Shift (skip dialog, no adv/disadv)
-      expect(dispatchSpy.mock.calls[0][0].shiftKey).toBe(true);
-    });
-  });
 });
 
